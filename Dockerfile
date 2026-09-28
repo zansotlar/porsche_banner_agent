@@ -1,9 +1,9 @@
 FROM python:3.10-slim
 
-# Namesti tesseract in nujne sistemske knjižnice
+# Posodobi sistemske pakete in namesti tesseract ter nujne grafične knjižnice za OpenCV
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
