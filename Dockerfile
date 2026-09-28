@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-# Posodobi sistemske pakete in namesti tesseract ter nujne grafične knjižnice za OpenCV
+# Posodobi sistemske pakete in namesti tesseract ter nujne grafične knjižnice
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libgl1 \
@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=100 -r requirements.txt
 
 COPY . .
 
