@@ -14,7 +14,7 @@ import shutil
 import zipfile
 from flask import Flask, request, render_template, send_file, jsonify
 
-from fixer.fix_smallprint import fix_image
+from fix_smallprint import fix_image
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
