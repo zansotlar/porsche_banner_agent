@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Porsche Banner Agent</title>
+<style>
+  :root{
+    --ink:#1B1F3B;
+    --paper:#F7F4EE;
+    --signal:#FF5A36;
+    --slate:#6B7280;
+    --line:#DCD7CC;
+    --text:#14171F;
+    --ok:#1E7A46;
+    --warn:#B3261E;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#EFECE4;font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--text);}
+  #root{max-width:1000px;margin:0 auto;background:var(--paper);border:1px solid var(--line);min-height:100vh;}
+  .hero{background:var(--ink);color:var(--paper);padding:26px 30px 22px;}
+  .hero h1{font-family:'Bebas Neue','Archivo Black',sans-serif;font-weight:400;font-size:38px;margin:0 0 4px;letter-spacing:0.5px;}
+  .hero p{margin:0;color:#C7CAD9;font-size:13.5px;max-width:560px;line-height:1.5;}
+  .panel{padding:24px 30px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
+  .field label{display:block;font-size:12px;color:var(--slate);margin-bottom:5px;}
+  .field input{width:100%;border:1px solid var(--line);background:#fff;padding:9px 10px;font-size:14px;border-radius:3px;font-family:inherit;}
+  #dropzone{
+    border:2px dashed var(--line);
+    border-radius:4px;
+    padding:36px 20px;
+    text-align:center;
+    color:var(--slate);
+    font-size:14px;
+    cursor:pointer;
+    margin-bottom:16px;
+    background:#fff;
+  }
+  #dropzone.drag{border-color:var(--signal);color:var(--signal);background:#FFF4F1;}
+  #fileInput{display:none;}
+  #fileList{font-size:13px;color:var(--slate);margin-bottom:16px;}
+  #fileList div{padding:3px 0;}
+  .btn{background:var(--signal);color:#fff;border:none;padding:11px 22px;font-size:14px;font-weight:600;border-radius:3px;cursor:pointer;}
+  .btn:disabled{background:#E5A692;cursor:default;}
+  .btn.secondary{background:var(--ink);}
+  #results{margin-top:24px;}
+  .result-row{
+    display:flex;align-items:center;gap:12px;
+    border:1px solid var(--line);background:#fff;padding:10px 12px;margin-bottom:8px;border-radius:3px;
+  }
+  .result-row img{width:56px;height:56px;object-fit:cover;border:1px solid var(--line);border-radius:2px;flex-shrink:0;}
+  .result-info{flex:1;font-size:13px;}
+  .result-info .fname{font-weight:600;margin-bottom:2px;}
+  .status-ok{color:var(--ok);font-weight:600;}
+  .status-warn{color:var(--warn);font-weight:600;}
+  .download-bar{margin-top:18px;display:flex;justify-content:flex-end;}
+  .loading{font-size:13px;color:var(--slate);margin-top:12px;}
+  .note{font-size:12px;color:var(--slate);margin-top:6px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="hero">
+    <h1>Porsche Banner Agent</h1>
+    <p>Naloži Meta banner kreative (PNG/JPG). Agent samodejno zazna vrstico z veljavnostjo akcije in jo posodobi na nov datum &mdash; ostalo besedilo in vizual ostaneta nespremenjena.</p>
+  </div>
+
+  <div class="panel">
+    <div class="row2">
+      <div class="field">
+        <label>Star datum (ki ga iščemo)</label>
+        <input id="oldDate" type="text" value="30.9.2026" />
+      </div>
+      <div class="field">
+        <label>Nov datum</label>
+        <input id="newDate" type="text" value="31.12.2026" />
+      </div>
+    </div>
+
+    <div id="dropzone">
+      Povleci sem slike (PNG/JPG) ali klikni za izbiro &mdash; lahko naenkrat naložiš vseh 16 kreativ
+    </div>
+    <input id="fileInput" type="file" multiple accept="image/png,image/jpeg" />
+    <div id="fileList"></div>
+
+    <button class="btn" id="processBtn" disabled>Popravi vse slike</button>
+    <div class="note">Slike brez zaznanega small printa (npr. čisto vizualne kartice carousela) bodo v izhodnem paketu vrnjene nespremenjene, da dobiš nazaj celoten, konsistenten komplet.</div>
+
+    <div id="loadingMsg" class="loading" style="display:none;">Obdelujem slike, prosim počakaj …</div>
+
+    <div id="results"></div>
+    <div class="download-bar" id="downloadBar" style="display:none;">
+      <button class="btn secondary" id="downloadBtn">Prenesi vse (ZIP)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileListEl = document.getElementById('fileList');
+const processBtn = document.getElementById('processBtn');
+const resultsEl = document.getElementById('results');
+const downloadBar = document.getElementById('downloadBar');
+const downloadBtn = document.getElementById('downloadBtn');
+const loadingMsg = document.getElementById('loadingMsg');
+
+let selectedFiles = [];
+let currentJobId = null;
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => addFiles(fileInput.files));
+
+function addFiles(fileListObj) {
+  for (const f of fileListObj) {
+    if (!selectedFiles.find(x => x.name === f.name && x.size === f.size)) {
+      selectedFiles.push(f);
+    }
+  }
+  renderFileList();
+}
+
+function renderFileList() {
+  fileListEl.innerHTML = selectedFiles.map(f => `<div>${f.name}</div>`).join('');
+  processBtn.disabled = selectedFiles.length === 0;
+}
+
+processBtn.addEventListener('click', async () => {
+  processBtn.disabled = true;
+  loadingMsg.style.display = 'block';
+  resultsEl.innerHTML = '';
+  downloadBar.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('old_date', document.getElementById('oldDate').value);
+  formData.append('new_date', document.getElementById('newDate').value);
+  selectedFiles.forEach(f => formData.append('images', f));
+
+  try {
+    const res = await fetch('/api/process', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Napaka pri obdelavi.');
+
+    currentJobId = data.job_id;
+    resultsEl.innerHTML = data.results.map(r => `
+      <div class="result-row">
+        <img src="/api/preview/${currentJobId}/${encodeURIComponent(r.filename)}" />
+        <div class="result-info">
+          <div class="fname">${r.filename}</div>
+          <div class="${r.ok ? 'status-ok' : 'status-warn'}">${r.ok ? 'Popravljeno' : r.message}</div>
+        </div>
+      </div>
+    `).join('');
+    downloadBar.style.display = 'flex';
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="status-warn">Napaka: ${err.message}</div>`;
+  } finally {
+    loadingMsg.style.display = 'none';
+    processBtn.disabled = false;
+  }
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (currentJobId) window.location.href = `/api/download/${currentJobId}`;
+});
+</script>
+</body>
+</html>
