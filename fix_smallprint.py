@@ -1,9 +1,7 @@
 """
-Porsche Banner Agent - jedro logike
+Porsche Banner Agent - optimizirano jedro logike
 Zamenja veljavnost akcije v small print besedilu na Porsche Meta bannerjih.
-Avtomatsko zazna vrstico z datumi (OCR), jo teksturno "izbriše" (inpainting)
-in na novo izriše s posodobljenim datumom, centrirano med sosednjima
-vrsticama, v ujemajoči velikosti pisave.
+Optimizirano za hitro obdelavo več slik hkrati brez timeoutov na strežniku.
 """
 import sys
 import re
@@ -44,55 +42,41 @@ def _scan_for_word(data, candidates):
     return None
 
 
-def _run_ocr_stages(img_bgr):
-    H, W = img_bgr.shape[:2]
-    stages = []
-
-    data1 = pytesseract.image_to_data(img_bgr, lang='slv+eng', output_type=pytesseract.Output.DICT)
-    stages.append((data1, 0))
-
-    crop_y0 = int(H * 0.70)
-    crop = img_bgr[crop_y0:H, 0:W]
-    data2 = pytesseract.image_to_data(crop, lang='slv+eng', output_type=pytesseract.Output.DICT, config='--psm 6')
-    stages.append((data2, crop_y0))
-
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    _, th = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-    data3 = pytesseract.image_to_data(th, lang='slv+eng', output_type=pytesseract.Output.DICT, config='--psm 6')
-    stages.append((data3, crop_y0))
-
-    return stages
-
-
 def find_layout(img_bgr, old_date_str):
     old_digits = re.sub(r"[^0-9]", "", old_date_str)
-    best = None
+    H, W = img_bgr.shape[:2]
 
-    for data, offset in _run_ocr_stages(img_bgr):
-        date_tok = _scan_for_date_token(data, old_digits)
-        line1_tok = _scan_for_word(data, ["popuste", "ugodnosti"])
-        line3_tok = _scan_for_word(data, ["vozil", "omejennabor", "omejen"])
-
-        def offset_tok(tok, is_date):
-            if tok is None:
-                return None
-            if is_date:
-                _, top, height, left, width = tok
-            else:
-                top, height, left, width = tok
-            return (top + offset, height, left, width)
-
-        date_o = offset_tok(date_tok, True)
-        line1_o = offset_tok(line1_tok, False)
-        line3_o = offset_tok(line3_tok, False)
-
-        score = sum(x is not None for x in [date_o, line1_o, line3_o])
-        if date_o is not None and (best is None or score > best[0]):
-            best = (score, date_o, line1_o, line3_o)
-
-    if best is None:
+    # Hitri OCR test (samo spodnji del, kjer je small print)
+    crop_y0 = int(H * 0.70)
+    crop = img_bgr[crop_y0:H, 0:W]
+    
+    data = pytesseract.image_to_data(crop, lang='slv+eng', output_type=pytesseract.Output.DICT, config='--psm 6')
+    
+    date_tok = _scan_for_date_token(data, old_digits)
+    
+    # Če v hitrem rezu ne najdemo datuma, sploh ne zgubljamo časa z ostalimi stopnjami (hitri izhod za carousele)
+    if date_tok is None:
         return None
-    _, date_o, line1_o, line3_o = best
+
+    line1_tok = _scan_for_word(data, ["popuste", "ugodnosti"])
+    line3_tok = _scan_for_word(data, ["vozil", "omejennabor", "omejen"])
+
+    def offset_tok(tok, is_date):
+        if tok is None:
+            return None
+        if is_date:
+            _, top, height, left, width = tok
+        else:
+            top, height, left, width = tok
+        return (top + crop_y0, height, left, width)
+
+    date_o = offset_tok(date_tok, True)
+    line1_o = offset_tok(line1_tok, False)
+    line3_o = offset_tok(line3_tok, False)
+
+    if date_o is None:
+        return None
+        
     return date_o, line1_o, line3_o
 
 
@@ -104,7 +88,8 @@ def fix_image(in_path, out_path, old_date=OLD_DATE, new_date=NEW_DATE, debug=Fal
 
     layout = find_layout(img_bgr, old_date)
     if layout is None:
-        return False, "Datum ni bil najden (banner morda nima small printa)."
+        return False, "Datum ni bil najden (slika je morda carousel kartica brez small printa)."
+        
     date_tok, line1_tok, line3_tok = layout
     d_top, d_height, d_left, d_width = date_tok
 
@@ -116,13 +101,12 @@ def fix_image(in_path, out_path, old_date=OLD_DATE, new_date=NEW_DATE, debug=Fal
         l1_top, l1_height, _, _ = line1_tok
         l3_top, _, _, _ = line3_tok
         line1_bottom = l1_top + l1_height
-        line3_top = l3_top
         safety_margin = max(3, int(l1_height * 0.15))
         ry0 = min(line1_bottom + safety_margin, d_top)
-        ry1 = max(line3_top - safety_margin, d_top + d_height)
+        ry1 = max(l3_top - safety_margin, d_top + d_height)
         ry0 = min(ry0, d_top - 4)
         ry1 = max(ry1, d_top + d_height + 4)
-        center_y = (line1_bottom + line3_top) / 2.0
+        center_y = (line1_bottom + l3_top) / 2.0
     else:
         pad_y_top = int(d_height * 0.6)
         pad_y_bot = int(d_height * 0.8)
@@ -156,14 +140,14 @@ def fix_image(in_path, out_path, old_date=OLD_DATE, new_date=NEW_DATE, debug=Fal
     except IOError:
         font = ImageFont.load_default()
 
-    center_x = W / 2  # <--- Tole mora biti tukaj definirano!
+    center_x = W / 2
 
     draw.text((center_x, center_y), new_line, font=font, fill=(255, 255, 255), anchor="mm")
 
     img_pil.save(out_path)
     if debug:
-        print(f"date_tok top={d_top} h={d_height}, font size used: {best_size}, center_y={center_y}")
-    return True, "OK"
+        print(f"Uspešno popravljeno. Font size: {best_size}")
+    return True, "Popravljeno"
 
 
 if __name__ == "__main__":
