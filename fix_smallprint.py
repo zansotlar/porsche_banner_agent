@@ -156,6 +156,8 @@ def fix_image(in_path, out_path, old_date=OLD_DATE, new_date=NEW_DATE, debug=Fal
     except IOError:
         font = ImageFont.load_default()
 
+    center_x = W / 2  # <--- Tole mora biti tukaj definirano!
+
     draw.text((center_x, center_y), new_line, font=font, fill=(255, 255, 255), anchor="mm")
 
     img_pil.save(out_path)
