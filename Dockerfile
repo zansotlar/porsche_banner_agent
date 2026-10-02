@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-# Posodobi sistemske pakete in namesti tesseract ter nujne grafične knjižnice
+# Namesti sistemske odvisnosti za OpenCV in Tesseract OCR
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libgl1 \
@@ -10,10 +10,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --default-timeout=100 -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 10000
-
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "app:app"]
+# Zagon aplikacije preko Gunicorna s podaljšanim časom (timeout)
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:10000", "--timeout", "120"]
