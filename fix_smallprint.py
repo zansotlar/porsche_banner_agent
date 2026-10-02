@@ -151,8 +151,10 @@ def fix_image(in_path, out_path, old_date=OLD_DATE, new_date=NEW_DATE, debug=Fal
 
     FONT_SIZE_BY_WIDTH = {1200: 28, 1080: 26}
     best_size = FONT_SIZE_BY_WIDTH.get(W, max(10, round(W * 28 / 1200)))
-    font = ImageFont.truetype(FONT_PATH, best_size)
-    center_x = W / 2
+    try:
+        font = ImageFont.truetype(FONT_PATH, best_size)
+    except IOError:
+        font = ImageFont.load_default()
 
     draw.text((center_x, center_y), new_line, font=font, fill=(255, 255, 255), anchor="mm")
 
